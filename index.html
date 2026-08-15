@@ -1,0 +1,942 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>Katalog Produk — SDM</title>
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
+  import {
+    getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot
+  } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyD2K0JYXtiGBMLFP38BByYsmuGd6JJglNA",
+    authDomain: "katalog-sdm.firebaseapp.com",
+    projectId: "katalog-sdm",
+    storageBucket: "katalog-sdm.firebasestorage.app",
+    messagingSenderId: "464072601464",
+    appId: "1:464072601464:web:54db7e1f4d31ab584ee28d"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+
+  // expose ke script utama (non-module) di bawah
+  window.fb = {
+    db,
+    collection, doc, setDoc, deleteDoc, onSnapshot
+  };
+
+  // Konfigurasi Cloudinary (upload gambar & PDF langsung dari browser,
+  // pakai unsigned upload preset — tanpa api_secret)
+  window.CLOUDINARY = {
+    cloudName: 'pn71prf9',
+    uploadPreset: 'Katalog_sdm_unsigned'
+  };
+</script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap');
+
+  :root{
+    --ink:#0F2A33;
+    --klinis:#1B4B5A;
+    --klinis-light:#E4EEF0;
+    --estetik:#2E8B7D;
+    --estetik-light:#E4F3EF;
+    --bg:#F7F9F9;
+    --card:#FFFFFF;
+    --line:#DDE6E6;
+    --muted:#5B7278;
+    --danger:#C1502E;
+    --gold:#C99A3C;
+    --radius:14px;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:'Inter',sans-serif;
+    -webkit-font-smoothing:antialiased;
+    padding-bottom:90px;
+  }
+  ::selection{background:var(--gold);color:#fff;}
+
+  /* HEADER */
+  header{
+    background:linear-gradient(135deg,var(--klinis) 0%,#123641 100%);
+    color:#fff; padding:22px 18px 26px;
+    position:sticky; top:0; z-index:20;
+    box-shadow:0 4px 18px rgba(15,42,51,0.18);
+  }
+  .brand-row{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+  .brand{display:flex;align-items:center;gap:10px;}
+  .brand-mark{
+    width:38px;height:38px;border-radius:10px;
+    background:linear-gradient(135deg,var(--gold),#a97e26);
+    display:flex;align-items:center;justify-content:center;
+    font-weight:800;font-size:15px;color:#1B2A0F;
+    flex-shrink:0;
+  }
+  .brand-text h1{font-size:16px;margin:0;font-weight:700;letter-spacing:.2px;}
+  .brand-text p{margin:1px 0 0;font-size:11px;color:#B9D3D6;font-weight:500;}
+  .add-btn{
+    background:var(--gold); color:#2A1D06; border:none;
+    padding:9px 14px; border-radius:10px; font-weight:700; font-size:13px;
+    display:flex; align-items:center; gap:6px; cursor:pointer;
+    box-shadow:0 3px 10px rgba(201,154,60,0.35);
+  }
+  .add-btn:active{transform:scale(0.96);}
+
+  .search-wrap{margin-top:16px;}
+  .search-box{
+    background:rgba(255,255,255,0.12); border:1px solid rgba(255,255,255,0.18);
+    border-radius:12px; padding:10px 14px; display:flex; gap:8px; align-items:center;
+  }
+  .search-box input{
+    background:transparent;border:none;outline:none;color:#fff;
+    font-family:'Inter',sans-serif; font-size:14px; width:100%;
+  }
+  .search-box input::placeholder{color:#9FC0C4;}
+  .search-box svg{flex-shrink:0;opacity:.8;}
+
+  .tabs{display:flex;gap:8px;margin-top:14px;overflow-x:auto;padding-bottom:2px;}
+  .tabs::-webkit-scrollbar{display:none;}
+  .tab{
+    flex-shrink:0; padding:7px 14px; border-radius:20px; font-size:12.5px; font-weight:600;
+    background:rgba(255,255,255,0.1); color:#CFE3E5; border:1px solid rgba(255,255,255,0.15);
+    cursor:pointer; white-space:nowrap;
+  }
+  .tab.active{background:#fff;color:var(--klinis);border-color:#fff;}
+
+  /* STATS STRIP */
+  .stats{
+    display:grid; grid-template-columns:repeat(3,1fr); gap:10px;
+    padding:14px 18px 4px;
+  }
+  .stat{
+    background:var(--card); border:1px solid var(--line); border-radius:12px;
+    padding:11px 12px;
+  }
+  .stat .n{font-size:19px;font-weight:800;color:var(--klinis);font-family:'JetBrains Mono',monospace;}
+  .stat .l{font-size:10.5px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-top:1px;}
+
+  /* CATEGORY FILTER CHIPS */
+  .cat-chips{display:flex;gap:8px;overflow-x:auto;padding:12px 18px 6px;}
+  .cat-chips::-webkit-scrollbar{display:none;}
+  .chip{
+    flex-shrink:0;padding:6px 13px;border-radius:18px;font-size:12px;font-weight:600;
+    background:var(--card);border:1.5px solid var(--line);color:var(--muted);cursor:pointer;
+  }
+  .chip.active{background:var(--ink);color:#fff;border-color:var(--ink);}
+
+  /* GRID */
+  .grid{
+    display:grid; grid-template-columns:1fr 1fr; gap:12px;
+    padding:10px 18px 20px;
+  }
+  @media(min-width:640px){ .grid{grid-template-columns:repeat(3,1fr);} }
+
+  .card{
+    background:var(--card); border:1px solid var(--line); border-radius:var(--radius);
+    overflow:hidden; cursor:pointer; position:relative;
+    transition:transform .15s ease, box-shadow .15s ease;
+  }
+  .card:active{transform:scale(0.97);}
+  .card-img{
+    width:100%; aspect-ratio:1/1; background:var(--bg);
+    display:flex;align-items:center;justify-content:center;
+    position:relative; overflow:hidden;
+  }
+  .card-img img{width:100%;height:100%;object-fit:cover;}
+  .card-img .ph{color:var(--line);}
+  .div-badge{
+    position:absolute; top:8px; left:8px;
+    font-size:9.5px; font-weight:700; padding:3px 8px; border-radius:20px;
+    color:#fff; letter-spacing:.3px;
+  }
+  .div-badge.klinis{background:var(--klinis);}
+  .div-badge.estetik{background:var(--estetik);}
+  .brosur-badge{
+    position:absolute; bottom:8px; right:8px;
+    background:rgba(15,42,51,0.85); color:#fff; font-size:9px; font-weight:700;
+    padding:3px 7px; border-radius:6px; display:flex; align-items:center; gap:3px;
+  }
+  .card-body{padding:10px 11px 12px;}
+  .card-body h3{
+    font-size:13px; font-weight:700; margin:0 0 3px; line-height:1.3;
+    display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+  }
+  .card-body .cat{font-size:10.5px;color:var(--muted);font-weight:500;margin-bottom:6px;}
+  .price-row{display:flex;justify-content:space-between;align-items:baseline;}
+  .price{font-size:13px;font-weight:800;color:var(--klinis);font-family:'JetBrains Mono',monospace;}
+  .stock{
+    font-size:10px; font-weight:700; padding:2px 6px; border-radius:6px;
+  }
+  .stock.ok{background:var(--estetik-light);color:var(--estetik);}
+  .stock.low{background:#FBEAE1;color:var(--danger);}
+  .stock.out{background:#F1F1F1;color:#999;}
+
+  .empty{
+    grid-column:1/-1; text-align:center; padding:60px 20px; color:var(--muted);
+  }
+  .empty svg{margin-bottom:12px;opacity:.5;}
+  .empty h3{font-size:15px;margin:0 0 4px;color:var(--ink);}
+  .empty p{font-size:13px;margin:0;}
+
+  /* FAB */
+  .fab{
+    position:fixed; bottom:22px; right:18px; z-index:30;
+    width:56px;height:56px;border-radius:50%;
+    background:var(--gold); border:none; color:#2A1D06;
+    box-shadow:0 6px 20px rgba(201,154,60,0.45);
+    display:flex;align-items:center;justify-content:center; cursor:pointer;
+  }
+  .fab:active{transform:scale(0.92);}
+
+  /* MODAL / SHEET */
+  .overlay{
+    position:fixed; inset:0; background:rgba(15,42,51,0.55);
+    z-index:40; display:none; backdrop-filter:blur(2px);
+  }
+  .overlay.show{display:block;}
+  .sheet{
+    position:fixed; left:0; right:0; bottom:0; z-index:41;
+    background:var(--card); border-radius:20px 20px 0 0;
+    max-height:92vh; overflow-y:auto;
+    transform:translateY(100%); transition:transform .28s cubic-bezier(.2,.9,.3,1);
+    padding-bottom:24px;
+  }
+  .sheet.show{transform:translateY(0);}
+  .sheet-handle{width:38px;height:4px;background:var(--line);border-radius:3px;margin:10px auto 4px;}
+  .sheet-head{
+    padding:8px 18px 14px; display:flex; justify-content:space-between; align-items:center;
+    border-bottom:1px solid var(--line);
+  }
+  .sheet-head h2{font-size:16px;margin:0;font-weight:700;}
+  .close-btn{
+    width:30px;height:30px;border-radius:50%;background:var(--bg);border:none;
+    display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--muted);
+  }
+  .sheet-body{padding:16px 18px;}
+
+  .field{margin-bottom:15px;}
+  .field label{
+    display:block; font-size:12px; font-weight:700; color:var(--muted);
+    margin-bottom:6px; text-transform:uppercase; letter-spacing:.3px;
+  }
+  .field input[type=text], .field input[type=number], .field textarea, .field select{
+    width:100%; border:1.5px solid var(--line); border-radius:10px; padding:11px 12px;
+    font-family:'Inter',sans-serif; font-size:14px; color:var(--ink); background:var(--bg);
+    outline:none;
+  }
+  .field input:focus, .field textarea:focus, .field select:focus{border-color:var(--klinis);}
+  .field textarea{resize:vertical; min-height:70px;}
+  .seg{display:flex; gap:8px;}
+  .seg-btn{
+    flex:1; padding:10px; border-radius:10px; border:1.5px solid var(--line);
+    background:var(--bg); text-align:center; font-size:13px; font-weight:700; color:var(--muted);
+    cursor:pointer;
+  }
+  .seg-btn.sel-klinis{border-color:var(--klinis); background:var(--klinis-light); color:var(--klinis);}
+  .seg-btn.sel-estetik{border-color:var(--estetik); background:var(--estetik-light); color:var(--estetik);}
+
+  .row2{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+
+  .upload-box{
+    border:2px dashed var(--line); border-radius:12px; padding:18px;
+    text-align:center; cursor:pointer; background:var(--bg);
+    position:relative; overflow:hidden;
+  }
+  .upload-box .up-icon{color:var(--muted); margin-bottom:6px;}
+  .upload-box .up-text{font-size:12.5px; color:var(--muted); font-weight:600;}
+  .upload-box input[type=file]{display:none;}
+
+  .img-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:10px;}
+  .img-grid:empty{margin-bottom:0;}
+  .img-thumb{
+    position:relative; aspect-ratio:1/1; border-radius:10px; overflow:hidden;
+    border:1.5px solid var(--line);
+  }
+  .img-thumb img{width:100%;height:100%;object-fit:cover; display:block;}
+  .img-thumb .remove-img{
+    position:absolute; top:4px; right:4px; background:rgba(0,0,0,0.6); color:#fff;
+    width:22px;height:22px;border-radius:50%;border:none; display:flex; align-items:center; justify-content:center;
+    cursor:pointer; z-index:2;
+  }
+  .img-thumb .cover-tag{
+    position:absolute; bottom:4px; left:4px; background:rgba(15,42,51,0.85); color:#fff;
+    font-size:8.5px; font-weight:700; padding:2px 6px; border-radius:5px; letter-spacing:.2px;
+  }
+
+  .pdf-row{
+    display:flex; align-items:center; gap:10px; border:1.5px solid var(--line); border-radius:10px;
+    padding:11px 12px; background:var(--bg); cursor:pointer;
+  }
+  .pdf-row .pdf-ic{
+    width:34px;height:34px;border-radius:8px;background:#FBEAE1;color:var(--danger);
+    display:flex;align-items:center;justify-content:center;flex-shrink:0;
+  }
+  .pdf-row .pdf-info{flex:1; min-width:0;}
+  .pdf-row .pdf-name{font-size:12.5px;font-weight:600;color:var(--ink); white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .pdf-row .pdf-sub{font-size:11px;color:var(--muted);}
+  .pdf-row .pdf-x{color:var(--muted);flex-shrink:0;}
+
+  .save-btn{
+    width:100%; background:var(--klinis); color:#fff; border:none; padding:14px;
+    border-radius:12px; font-size:14.5px; font-weight:700; cursor:pointer; margin-top:6px;
+  }
+  .save-btn:active{transform:scale(0.98);}
+  .del-btn{
+    width:100%; background:#fff; color:var(--danger); border:1.5px solid var(--danger);
+    padding:12px; border-radius:12px; font-size:13.5px; font-weight:700; cursor:pointer; margin-top:10px;
+  }
+
+  /* DETAIL VIEW */
+  .detail-hero{width:100%; background:var(--bg); position:relative;}
+  .hero-scroll{display:flex; overflow-x:auto; scroll-snap-type:x mandatory; -webkit-overflow-scrolling:touch;}
+  .hero-scroll::-webkit-scrollbar{display:none;}
+  .hero-slide{flex:0 0 100%; scroll-snap-align:center; display:flex; align-items:center; justify-content:center; background:var(--bg); max-height:60vh; overflow:hidden;}
+  .hero-slide img{width:100%; height:auto; max-height:60vh; object-fit:contain; display:block;}
+  .hero-dots{display:flex; justify-content:center; gap:6px; padding:10px 0 2px;}
+  .hero-dot{width:6px;height:6px;border-radius:50%;background:var(--line);}
+  .hero-dot.active{background:var(--klinis); width:16px; border-radius:4px; transition:all .2s;}
+  .hero-empty{width:100%; aspect-ratio:4/3; display:flex;align-items:center;justify-content:center;color:var(--line);}
+  .detail-body{padding:16px 18px;}
+  .detail-badge{display:inline-block; font-size:11px; font-weight:700; padding:4px 10px; border-radius:20px; color:#fff; margin-bottom:8px;}
+  .detail-title{font-size:19px; font-weight:800; margin:0 0 4px;}
+  .detail-cat{font-size:13px; color:var(--muted); margin-bottom:14px;}
+  .detail-price-box{
+    background:var(--klinis-light); border-radius:12px; padding:14px 16px;
+    display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;
+  }
+  .detail-price-box .dp{font-size:20px; font-weight:800; color:var(--klinis); font-family:'JetBrains Mono',monospace;}
+  .detail-price-box .ds{text-align:right;}
+  .detail-desc{font-size:13.5px; line-height:1.6; color:#3A4E52; margin-bottom:16px; white-space:pre-wrap;}
+  .brosur-link{
+    display:flex; align-items:center; gap:12px; background:var(--bg); border:1.5px solid var(--line);
+    border-radius:12px; padding:13px 14px; text-decoration:none; margin-bottom:16px;
+  }
+  .brosur-link .pdf-ic{width:38px;height:38px;border-radius:9px;background:#FBEAE1;color:var(--danger);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .brosur-link .bl-text b{display:block;font-size:13px;color:var(--ink);}
+  .brosur-link .bl-text span{font-size:11.5px;color:var(--muted);}
+  .detail-actions{display:flex;gap:10px;}
+  .edit-btn{flex:1; background:var(--klinis); color:#fff; border:none; padding:13px; border-radius:12px; font-weight:700; font-size:13.5px; cursor:pointer;}
+  .del-btn-sm{flex:0 0 50px; background:#fff; border:1.5px solid var(--danger); color:var(--danger); border-radius:12px; display:flex;align-items:center;justify-content:center; cursor:pointer;}
+
+  .toast{
+    position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(20px);
+    background:var(--ink); color:#fff; padding:11px 20px; border-radius:30px; font-size:13px; font-weight:600;
+    opacity:0; pointer-events:none; transition:all .25s ease; z-index:60; white-space:nowrap;
+  }
+  .toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+
+  .loading-spin{
+    width:16px;height:16px;border:2px solid rgba(255,255,255,0.3); border-top-color:#fff;
+    border-radius:50%; animation:spin 0.7s linear infinite; display:inline-block;
+  }
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  .upload-progress{
+    margin-top:10px; background:var(--bg); border-radius:8px; padding:9px 11px;
+    display:none; align-items:center; gap:9px; border:1px solid var(--line);
+  }
+  .upload-progress.show{display:flex;}
+  .upload-progress .up-bar-track{flex:1; height:5px; background:var(--line); border-radius:4px; overflow:hidden;}
+  .upload-progress .up-bar-fill{height:100%; background:var(--klinis); width:0%; transition:width .2s;}
+  .upload-progress .up-pct{font-size:11px; font-weight:700; color:var(--muted); font-family:'JetBrains Mono',monospace; flex-shrink:0;}
+
+  .conn-banner{
+    display:none; align-items:center; gap:8px; background:#FBEAE1; color:var(--danger);
+    font-size:12px; font-weight:600; padding:9px 18px; text-align:center; justify-content:center;
+  }
+  .conn-banner.show{display:flex;}
+</style>
+</head>
+<body>
+
+<div class="conn-banner" id="connBanner">⚠ Gagal terhubung ke server. Perubahan tidak akan tersimpan.</div>
+
+<header>
+  <div class="brand-row">
+    <div class="brand">
+      <div class="brand-mark">SDM</div>
+      <div class="brand-text">
+        <h1>Katalog Produk</h1>
+        <p>Surya Dermato Medica · MKS</p>
+      </div>
+    </div>
+    <button class="add-btn" onclick="openForm()">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M12 5v14M5 12h14"/></svg>
+      Tambah
+    </button>
+  </div>
+  <div class="search-wrap">
+    <div class="search-box">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+      <input id="searchInput" type="text" placeholder="Cari nama produk..." oninput="render()">
+    </div>
+  </div>
+  <div class="tabs">
+    <div class="tab active" data-div="all" onclick="setDiv('all')">Semua</div>
+    <div class="tab" data-div="Klinis" onclick="setDiv('Klinis')">Derma Klinis</div>
+    <div class="tab" data-div="Estetik" onclick="setDiv('Estetik')">Derma Estetik</div>
+  </div>
+</header>
+
+<div class="stats">
+  <div class="stat"><div class="n" id="statTotal">0</div><div class="l">Produk</div></div>
+  <div class="stat"><div class="n" id="statBrosur">0</div><div class="l">Ada Brosur</div></div>
+  <div class="stat"><div class="n" id="statLow">0</div><div class="l">Stok Menipis</div></div>
+</div>
+
+<div class="cat-chips" id="catChips"></div>
+
+<div class="grid" id="grid"></div>
+
+<button class="fab" onclick="openForm()">
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+</button>
+
+<!-- FORM SHEET -->
+<div class="overlay" id="overlayForm" onclick="closeForm()"></div>
+<div class="sheet" id="formSheet">
+  <div class="sheet-handle"></div>
+  <div class="sheet-head">
+    <h2 id="formTitle">Tambah Produk</h2>
+    <button class="close-btn" onclick="closeForm()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"><path d="M18 6 6 18M6 6l12 12"/></svg>
+    </button>
+  </div>
+  <div class="sheet-body">
+    <div class="field">
+      <label>Divisi</label>
+      <div class="seg">
+        <div class="seg-btn" id="segKlinis" onclick="pickDiv('Klinis')">Derma Klinis</div>
+        <div class="seg-btn" id="segEstetik" onclick="pickDiv('Estetik')">Derma Estetik</div>
+      </div>
+    </div>
+    <div class="field">
+      <label>Nama Produk</label>
+      <input type="text" id="fName" placeholder="mis. Dermatix Ultra Gel 15g">
+    </div>
+    <div class="field">
+      <label>Kategori</label>
+      <input type="text" id="fCat" placeholder="mis. Scar Treatment, Filler, Skincare">
+    </div>
+    <div class="row2">
+      <div class="field">
+        <label>Harga (Rp)</label>
+        <input type="number" id="fPrice" placeholder="0">
+      </div>
+      <div class="field">
+        <label>Stok</label>
+        <input type="number" id="fStock" placeholder="0">
+      </div>
+    </div>
+    <div class="field">
+      <label>Deskripsi</label>
+      <textarea id="fDesc" placeholder="Indikasi, kemasan, catatan penting..."></textarea>
+    </div>
+    <div class="field">
+      <label>Gambar Produk (bisa lebih dari satu)</label>
+      <div class="img-grid" id="imgGrid"></div>
+      <div class="upload-box" id="imgBox" onclick="document.getElementById('imgInput').click()">
+        <svg class="up-icon" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/></svg>
+        <div class="up-text">Ketuk untuk tambah gambar</div>
+        <input type="file" id="imgInput" accept="image/*" multiple onchange="handleImg(event)">
+      </div>
+      <div class="upload-progress" id="imgProgress">
+        <span class="loading-spin" style="border-color:rgba(27,75,90,0.25); border-top-color:var(--klinis);"></span>
+        <div class="up-bar-track"><div class="up-bar-fill" id="imgProgressBar"></div></div>
+        <div class="up-pct" id="imgProgressPct">Mengompres...</div>
+      </div>
+    </div>
+    <div class="field">
+      <label>Brosur (PDF)</label>
+      <div class="pdf-row" id="pdfRow" onclick="document.getElementById('pdfInput').click()">
+        <div class="pdf-ic">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+        </div>
+        <div class="pdf-info">
+          <div class="pdf-name" id="pdfName">Belum ada brosur</div>
+          <div class="pdf-sub" id="pdfSub">Ketuk untuk upload PDF</div>
+        </div>
+        <svg class="pdf-x" id="pdfXIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+      </div>
+      <input type="file" id="pdfInput" accept="application/pdf" style="display:none" onchange="handlePdf(event)">
+      <div class="upload-progress" id="pdfProgress">
+        <span class="loading-spin" style="border-color:rgba(27,75,90,0.25); border-top-color:var(--klinis);"></span>
+        <div class="up-bar-track"><div class="up-bar-fill" id="pdfProgressBar"></div></div>
+        <div class="up-pct" id="pdfProgressPct">Mengunggah...</div>
+      </div>
+    </div>
+
+    <button class="save-btn" id="saveBtn" onclick="saveProduct()">Simpan Produk</button>
+    <button class="del-btn" id="deleteBtn" style="display:none" onclick="deleteProduct()">Hapus Produk</button>
+  </div>
+</div>
+
+<!-- DETAIL SHEET -->
+<div class="overlay" id="overlayDetail" onclick="closeDetail()"></div>
+<div class="sheet" id="detailSheet">
+  <div class="sheet-handle"></div>
+  <div class="sheet-head" style="border-bottom:none;">
+    <div></div>
+    <button class="close-btn" onclick="closeDetail()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"><path d="M18 6 6 18M6 6l12 12"/></svg>
+    </button>
+  </div>
+  <div id="detailContent"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+let products = [];
+let currentDiv = 'all';
+let currentCat = 'all';
+let editingId = null;
+let pickedDiv = 'Klinis';
+let tempImgs = [];      // array of {url, path}  -- url utk tampil, path utk hapus dari Storage
+let pendingImgFiles = []; // File objects yang belum diupload (baru dipilih)
+let tempPdf = null;     // {url, path, name, size} atau null
+let pendingPdfFile = null;
+let heroIndex = 0;
+
+const COL_NAME = 'products';
+
+function fmtRupiah(n){
+  if(n===undefined || n===null || n==='') return 'Rp 0';
+  return 'Rp ' + Number(n).toLocaleString('id-ID');
+}
+function fmtSize(bytes){
+  if(!bytes) return '';
+  if(bytes < 1024*1024) return Math.round(bytes/1024)+' KB';
+  return (bytes/(1024*1024)).toFixed(1)+' MB';
+}
+function uid(){ return 'p_' + Date.now() + '_' + Math.random().toString(36).slice(2,8); }
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 2200);
+}
+
+/* ---- KOMPRESI GAMBAR ----
+   Resize agar sisi terpanjang maks 1600px, convert ke JPEG kualitas 0.85.
+   Foto profesional/brosur tetap tajam, tapi ukuran file turun drastis. */
+function compressImage(file, maxDim=1600, quality=0.85){
+  return new Promise((resolve, reject)=>{
+    const img = new Image();
+    const reader = new FileReader();
+    reader.onload = (e)=>{ img.src = e.target.result; };
+    reader.onerror = reject;
+    img.onload = ()=>{
+      let { width, height } = img;
+      if(width > maxDim || height > maxDim){
+        if(width > height){ height = Math.round(height * maxDim / width); width = maxDim; }
+        else { width = Math.round(width * maxDim / height); height = maxDim; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width; canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0,0,width,height);
+      ctx.drawImage(img, 0, 0, width, height);
+      canvas.toBlob((blob)=>{
+        if(!blob){ reject(new Error('Kompresi gagal')); return; }
+        resolve(blob);
+      }, 'image/jpeg', quality);
+    };
+    img.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function setConnError(show){
+  document.getElementById('connBanner').classList.toggle('show', show);
+}
+
+/* ---- UPLOAD KE CLOUDINARY ----
+   Unsigned upload langsung dari browser, tanpa api_secret.
+   resourceType: 'image' untuk foto, 'raw' untuk PDF/file non-gambar. */
+function uploadToCloudinary(blobOrFile, resourceType, onProgress){
+  return new Promise((resolve, reject)=>{
+    const { cloudName, uploadPreset } = window.CLOUDINARY;
+    const url = `https://api.cloudinary.com/v1_1/${cloudName}/${resourceType}/upload`;
+    const form = new FormData();
+    form.append('file', blobOrFile);
+    form.append('upload_preset', uploadPreset);
+
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', url);
+    xhr.upload.onprogress = (e)=>{
+      if(e.lengthComputable && onProgress) onProgress(Math.round(e.loaded/e.total*100));
+    };
+    xhr.onload = ()=>{
+      if(xhr.status >= 200 && xhr.status < 300){
+        try{ resolve(JSON.parse(xhr.responseText)); }
+        catch(e){ reject(new Error('Respons Cloudinary tidak valid')); }
+      } else {
+        let msg = 'Upload gagal (' + xhr.status + ')';
+        try{ msg = JSON.parse(xhr.responseText).error.message; }catch(e){}
+        reject(new Error(msg));
+      }
+    };
+    xhr.onerror = ()=> reject(new Error('Koneksi ke Cloudinary gagal'));
+    xhr.send(form);
+  });
+}
+
+let unsubscribe = null;
+function loadProducts(){
+  const { db, collection, onSnapshot } = window.fb;
+  unsubscribe = onSnapshot(collection(db, COL_NAME), (snap)=>{
+    setConnError(false);
+    products = [];
+    snap.forEach(d=> products.push({ id:d.id, ...d.data() }));
+    products.sort((a,b)=> (b.updatedAt||0) - (a.updatedAt||0));
+    renderCatChips();
+    render();
+  }, (err)=>{
+    console.error(err);
+    setConnError(true);
+    showToast('Gagal terhubung ke Firebase');
+  });
+}
+
+function setDiv(d){
+  currentDiv = d;
+  currentCat = 'all';
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active', t.dataset.div===d));
+  renderCatChips();
+  render();
+}
+
+function renderCatChips(){
+  const wrap = document.getElementById('catChips');
+  let pool = products;
+  if(currentDiv !== 'all') pool = pool.filter(p=>p.division===currentDiv);
+  const cats = [...new Set(pool.map(p=>p.category).filter(Boolean))].sort();
+  wrap.innerHTML = '';
+  const allChip = document.createElement('div');
+  allChip.className = 'chip' + (currentCat==='all' ? ' active' : '');
+  allChip.textContent = 'Semua Kategori';
+  allChip.onclick = ()=>{ currentCat='all'; renderCatChips(); render(); };
+  wrap.appendChild(allChip);
+  cats.forEach(c=>{
+    const el = document.createElement('div');
+    el.className = 'chip' + (currentCat===c ? ' active' : '');
+    el.textContent = c;
+    el.onclick = ()=>{ currentCat=c; renderCatChips(); render(); };
+    wrap.appendChild(el);
+  });
+}
+
+function render(){
+  const q = document.getElementById('searchInput').value.trim().toLowerCase();
+  let list = products;
+  if(currentDiv !== 'all') list = list.filter(p=>p.division===currentDiv);
+  if(currentCat !== 'all') list = list.filter(p=>p.category===currentCat);
+  if(q) list = list.filter(p=>p.name.toLowerCase().includes(q));
+
+  document.getElementById('statTotal').textContent = products.length;
+  document.getElementById('statBrosur').textContent = products.filter(p=>p.pdfUrl).length;
+  document.getElementById('statLow').textContent = products.filter(p=>p.stock!==undefined && p.stock>0 && p.stock<=10).length;
+
+  const grid = document.getElementById('grid');
+  if(list.length===0){
+    grid.innerHTML = `<div class="empty">
+      <svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="7" width="18" height="14" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+      <h3>Belum ada produk</h3>
+      <p>Ketuk tombol Tambah untuk mulai mengisi katalog.</p>
+    </div>`;
+    return;
+  }
+  grid.innerHTML = list.map(p=>{
+    const stockClass = !p.stock || p.stock<=0 ? 'out' : (p.stock<=10 ? 'low' : 'ok');
+    const stockText = !p.stock || p.stock<=0 ? 'Habis' : (p.stock<=10 ? 'Stok '+p.stock : 'Stok '+p.stock);
+    return `
+    <div class="card" onclick="openDetail('${p.id}')">
+      <div class="card-img">
+        ${(p.images&&p.images[0]) ? `<img src="${p.images[0].url}">` : `<svg class="ph" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/></svg>`}
+        <div class="div-badge ${p.division==='Klinis'?'klinis':'estetik'}">${p.division==='Klinis'?'Klinis':'Estetik'}</div>
+        ${p.pdfUrl ? `<div class="brosur-badge"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/></svg> PDF</div>` : ''}
+      </div>
+      <div class="card-body">
+        <h3>${escapeHtml(p.name)}</h3>
+        <div class="cat">${escapeHtml(p.category||'—')}</div>
+        <div class="price-row">
+          <div class="price">${fmtRupiah(p.price)}</div>
+          <div class="stock ${stockClass}">${stockText}</div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function escapeHtml(s){
+  const d = document.createElement('div');
+  d.textContent = s || '';
+  return d.innerHTML;
+}
+
+/* ---- FORM ---- */
+function pickDiv(d){
+  pickedDiv = d;
+  document.getElementById('segKlinis').className = 'seg-btn' + (d==='Klinis' ? ' sel-klinis' : '');
+  document.getElementById('segEstetik').className = 'seg-btn' + (d==='Estetik' ? ' sel-estetik' : '');
+}
+
+function openForm(product){
+  editingId = product ? product.id : null;
+  document.getElementById('formTitle').textContent = product ? 'Edit Produk' : 'Tambah Produk';
+  document.getElementById('deleteBtn').style.display = product ? 'block' : 'none';
+  document.getElementById('saveBtn').textContent = product ? 'Simpan Perubahan' : 'Simpan Produk';
+
+  pickDiv(product ? product.division : 'Klinis');
+  document.getElementById('fName').value = product ? product.name : '';
+  document.getElementById('fCat').value = product ? product.category : '';
+  document.getElementById('fPrice').value = product ? product.price : '';
+  document.getElementById('fStock').value = product ? product.stock : '';
+  document.getElementById('fDesc').value = product ? product.description : '';
+
+  tempImgs = product && product.images ? [...product.images] : []; // {url, path}
+  pendingImgFiles = [];
+  tempPdf = product && product.pdfUrl ? { url: product.pdfUrl, path: product.pdfPath, name: product.pdfName, size: product.pdfSize } : null;
+  pendingPdfFile = null;
+  refreshImgGrid();
+  refreshPdfRow();
+  document.getElementById('imgProgress').classList.remove('show');
+  document.getElementById('pdfProgress').classList.remove('show');
+
+  closeDetail(true);
+  document.getElementById('overlayForm').classList.add('show');
+  document.getElementById('formSheet').classList.add('show');
+}
+function closeForm(){
+  document.getElementById('overlayForm').classList.remove('show');
+  document.getElementById('formSheet').classList.remove('show');
+}
+
+function refreshImgGrid(){
+  const grid = document.getElementById('imgGrid');
+  const existing = tempImgs.map((im,i)=>({ src: im.url, kind:'existing', idx:i }));
+  const pending = pendingImgFiles.map((pf,i)=>({ src: pf.previewUrl, kind:'pending', idx:i }));
+  const all = [...existing, ...pending];
+  grid.innerHTML = all.map((item,pos)=>`
+    <div class="img-thumb">
+      <img src="${item.src}">
+      ${pos===0 ? '<div class="cover-tag">SAMPUL</div>' : ''}
+      ${item.kind==='pending' ? '<div class="cover-tag" style="left:auto;right:4px;bottom:auto;top:4px;background:var(--gold);color:#2A1D06;">BARU</div>' : ''}
+      <button class="remove-img" onclick="event.stopPropagation(); removeImg('${item.kind}', ${item.idx})">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+  `).join('');
+}
+function removeImg(kind, idx){
+  if(kind==='existing') tempImgs.splice(idx,1);
+  else pendingImgFiles.splice(idx,1);
+  refreshImgGrid();
+}
+function handleImg(e){
+  const files = Array.from(e.target.files || []);
+  if(!files.length) return;
+  files.forEach(file=>{
+    if(!file.type.startsWith('image/')){ showToast(file.name + ' bukan gambar'); return; }
+    if(file.size > 20*1024*1024){ showToast(file.name + ' terlalu besar (maks 20MB sebelum kompresi)'); return; }
+    pendingImgFiles.push({ file, previewUrl: URL.createObjectURL(file) });
+  });
+  refreshImgGrid();
+  e.target.value = '';
+}
+
+function refreshPdfRow(){
+  const name = document.getElementById('pdfName');
+  const sub = document.getElementById('pdfSub');
+  const xicon = document.getElementById('pdfXIcon');
+  const active = pendingPdfFile || tempPdf;
+  if(active){
+    name.textContent = (pendingPdfFile ? pendingPdfFile.file.name : tempPdf.name) || 'brosur.pdf';
+    const size = pendingPdfFile ? pendingPdfFile.file.size : tempPdf.size;
+    sub.textContent = fmtSize(size) + (pendingPdfFile ? ' · Baru dipilih' : ' · Ketuk untuk ganti');
+    xicon.outerHTML = `<svg class="pdf-x" id="pdfXIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" onclick="event.stopPropagation(); removePdf()"><path d="M18 6 6 18M6 6l12 12"/></svg>`;
+  } else {
+    name.textContent = 'Belum ada brosur';
+    sub.textContent = 'Ketuk untuk upload PDF';
+    const el = document.getElementById('pdfXIcon');
+    el.outerHTML = `<svg class="pdf-x" id="pdfXIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>`;
+  }
+}
+function removePdf(){ tempPdf = null; pendingPdfFile = null; document.getElementById('pdfInput').value=''; refreshPdfRow(); }
+
+function handlePdf(e){
+  const file = e.target.files[0];
+  if(!file) return;
+  if(file.type !== 'application/pdf'){ showToast('File harus berupa PDF'); return; }
+  if(file.size > 15*1024*1024){ showToast('PDF maksimal 15MB'); return; }
+  pendingPdfFile = { file };
+  refreshPdfRow();
+  e.target.value = '';
+}
+
+function setProgress(kind, pct, label){
+  const box = document.getElementById(kind+'Progress');
+  const bar = document.getElementById(kind+'ProgressBar');
+  const pctEl = document.getElementById(kind+'ProgressPct');
+  box.classList.toggle('show', pct !== null);
+  if(pct !== null){ bar.style.width = pct + '%'; pctEl.textContent = label || (pct + '%'); }
+}
+
+async function saveProduct(){
+  const name = document.getElementById('fName').value.trim();
+  if(!name){ showToast('Nama produk wajib diisi'); return; }
+
+  const { db, doc, setDoc } = window.fb;
+  const id = editingId || uid();
+  const btn = document.getElementById('saveBtn');
+  const orig = btn.textContent;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="loading-spin"></span>';
+
+  try{
+    // 1) Kompres & upload gambar baru ke Cloudinary
+    const uploadedNew = [];
+    if(pendingImgFiles.length){
+      let done = 0;
+      setProgress('img', 0, `0/${pendingImgFiles.length}`);
+      for(const pf of pendingImgFiles){
+        const compressed = await compressImage(pf.file);
+        const result = await uploadToCloudinary(compressed, 'image', (pct)=>{
+          const overall = Math.round((done + pct/100) / pendingImgFiles.length * 100);
+          setProgress('img', overall, `${done}/${pendingImgFiles.length}`);
+        });
+        uploadedNew.push({ url: result.secure_url, publicId: result.public_id });
+        done++;
+        setProgress('img', Math.round(done/pendingImgFiles.length*100), `${done}/${pendingImgFiles.length}`);
+      }
+      setProgress('img', null);
+    }
+    const allImages = [...tempImgs, ...uploadedNew];
+
+    // 2) Upload PDF baru ke Cloudinary (resource_type: raw, untuk file non-gambar)
+    let pdfData = tempPdf ? { pdfUrl: tempPdf.url, pdfPublicId: tempPdf.publicId, pdfName: tempPdf.name, pdfSize: tempPdf.size } : { pdfUrl:null, pdfPublicId:null, pdfName:null, pdfSize:null };
+    if(pendingPdfFile){
+      setProgress('pdf', 0, 'Mengunggah...');
+      const result = await uploadToCloudinary(pendingPdfFile.file, 'raw', (pct)=>{
+        setProgress('pdf', pct, 'Mengunggah...');
+      });
+      pdfData = { pdfUrl: result.secure_url, pdfPublicId: result.public_id, pdfName: pendingPdfFile.file.name, pdfSize: pendingPdfFile.file.size };
+      setProgress('pdf', null);
+    }
+
+    // 3) Simpan dokumen produk ke Firestore (hanya teks + URL, bukan file)
+    const data = {
+      division: pickedDiv,
+      name: name,
+      category: document.getElementById('fCat').value.trim(),
+      price: document.getElementById('fPrice').value ? Number(document.getElementById('fPrice').value) : 0,
+      stock: document.getElementById('fStock').value ? Number(document.getElementById('fStock').value) : 0,
+      description: document.getElementById('fDesc').value.trim(),
+      images: allImages,
+      ...pdfData,
+      updatedAt: Date.now()
+    };
+    await setDoc(doc(db, COL_NAME, id), data);
+
+    closeForm();
+    showToast(editingId ? 'Produk diperbarui' : 'Produk ditambahkan');
+  }catch(err){
+    console.error(err);
+    showToast('Gagal menyimpan: ' + (err.message || 'periksa koneksi'));
+  }finally{
+    btn.disabled = false;
+    btn.textContent = orig;
+    setProgress('img', null);
+    setProgress('pdf', null);
+  }
+}
+
+async function deleteProduct(){
+  if(!editingId) return;
+  const { db, doc, deleteDoc } = window.fb;
+  try{
+    await deleteDoc(doc(db, COL_NAME, editingId));
+    // Catatan: file di Cloudinary tidak ikut terhapus (unsigned upload tidak
+    // bisa menghapus dari browser demi keamanan). Data produk sudah hilang
+    // dari katalog; file lama di Cloudinary bisa dibersihkan manual lewat
+    // Cloudinary Console kalau perlu.
+    closeForm();
+    closeDetail();
+    showToast('Produk dihapus');
+  }catch(err){
+    console.error(err);
+    showToast('Gagal menghapus produk');
+  }
+}
+
+/* ---- DETAIL ---- */
+function openDetail(id){
+  const p = products.find(x=>x.id===id);
+  if(!p) return;
+  const stockClass = !p.stock || p.stock<=0 ? 'out' : (p.stock<=10 ? 'low' : 'ok');
+  const stockText = !p.stock || p.stock<=0 ? 'Stok habis' : (p.stock<=10 ? 'Stok menipis · ' + p.stock + ' unit' : p.stock + ' unit tersedia');
+
+  const imgs = p.images && p.images.length ? p.images : [];
+  heroIndex = 0;
+  document.getElementById('detailContent').innerHTML = `
+    <div class="detail-hero">
+      ${imgs.length ? `
+        <div class="hero-scroll" id="heroScroll" onscroll="onHeroScroll()">
+          ${imgs.map(im=>`<div class="hero-slide"><img src="${im.url}"></div>`).join('')}
+        </div>
+        ${imgs.length>1 ? `<div class="hero-dots" id="heroDots">${imgs.map((_,i)=>`<div class="hero-dot${i===0?' active':''}"></div>`).join('')}</div>` : ''}
+      ` : `<div class="hero-empty"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/></svg></div>`}
+    </div>
+    <div class="detail-body">
+      <span class="detail-badge" style="background:${p.division==='Klinis'?'var(--klinis)':'var(--estetik)'}">${p.division==='Klinis'?'Derma Klinis':'Derma Estetik'}</span>
+      <h2 class="detail-title">${escapeHtml(p.name)}</h2>
+      <div class="detail-cat">${escapeHtml(p.category||'Tanpa kategori')}</div>
+      <div class="detail-price-box">
+        <div class="dp">${fmtRupiah(p.price)}</div>
+        <div class="ds"><span class="stock ${stockClass}">${stockText}</span></div>
+      </div>
+      ${p.description ? `<div class="detail-desc">${escapeHtml(p.description)}</div>` : ''}
+      ${p.pdfUrl ? `<a class="brosur-link" href="${p.pdfUrl}" target="_blank" rel="noopener">
+        <div class="pdf-ic"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></div>
+        <div class="bl-text"><b>${escapeHtml(p.pdfName || 'brosur.pdf')}</b><span>${fmtSize(p.pdfSize)} · Ketuk untuk buka</span></div>
+      </a>` : ''}
+      <div class="detail-actions">
+        <button class="edit-btn" onclick="openForm(products.find(x=>x.id==='${p.id}'))">Edit Produk</button>
+        <button class="del-btn-sm" onclick="editingId='${p.id}'; deleteProduct();">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6h16z"/></svg>
+        </button>
+      </div>
+    </div>
+  `;
+  document.getElementById('overlayDetail').classList.add('show');
+  document.getElementById('detailSheet').classList.add('show');
+}
+function onHeroScroll(){
+  const scroller = document.getElementById('heroScroll');
+  const dotsWrap = document.getElementById('heroDots');
+  if(!scroller || !dotsWrap) return;
+  const idx = Math.round(scroller.scrollLeft / scroller.clientWidth);
+  if(idx === heroIndex) return;
+  heroIndex = idx;
+  [...dotsWrap.children].forEach((d,i)=>d.classList.toggle('active', i===idx));
+}
+function closeDetail(skip){
+  document.getElementById('overlayDetail').classList.remove('show');
+  document.getElementById('detailSheet').classList.remove('show');
+}
+
+window.addEventListener('DOMContentLoaded', ()=>{
+  // window.fb disiapkan oleh <script type="module"> di head; modul dieksekusi
+  // sebelum DOMContentLoaded jadi window.fb sudah pasti tersedia di sini.
+  loadProducts();
+});
+</script>
+</body>
+</html>
