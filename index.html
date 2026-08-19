@@ -1,0 +1,1144 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>Katalog Produk — SDM</title>
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
+  import {
+    getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot
+  } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+  import {
+    getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged
+  } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyD2K0JYXtiGBMLFP38BByYsmuGd6JJglNA",
+    authDomain: "katalog-sdm.firebaseapp.com",
+    projectId: "katalog-sdm",
+    storageBucket: "katalog-sdm.firebasestorage.app",
+    messagingSenderId: "464072601464",
+    appId: "1:464072601464:web:54db7e1f4d31ab584ee28d"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+  const auth = getAuth(app);
+  const googleProvider = new GoogleAuthProvider();
+
+  // Email admin yang diizinkan menambah/edit/hapus produk.
+  // Perlindungan sesungguhnya ada di Firestore Rules (lihat firebase-rules.txt),
+  // ini hanya menentukan tampilan UI.
+  window.ADMIN_EMAIL = 'iswandiiswa1995@gmail.com';
+
+  // expose ke script utama (non-module) di bawah
+  window.fb = {
+    db,
+    collection, doc, setDoc, deleteDoc, onSnapshot,
+    auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged
+  };
+
+  // Konfigurasi Cloudinary (upload gambar & PDF langsung dari browser,
+  // pakai unsigned upload preset — tanpa api_secret)
+  window.CLOUDINARY = {
+    cloudName: 'pn71prf9',
+    uploadPreset: 'Katalog_sdm_unsigned'
+  };
+</script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Nunito:wght@400;500;600;700;800&family=Caveat:wght@600;700&family=JetBrains+Mono:wght@500&display=swap');
+
+  :root{
+    --ink:#123B63;
+    --klinis:#1E7FC2;
+    --klinis-light:#DCEFFC;
+    --estetik:#D9540E;
+    --estetik-2:#A6238C;
+    --estetik-light:#FCE7DA;
+    --bg:#EAF6FD;
+    --card:#FFFFFF;
+    --line:#CFE6F4;
+    --muted:#5E7A93;
+    --danger:#D9540E;
+    --gold:#8DB63C;
+    --purple:#A6238C;
+    --skyA:#BFE0F5;
+    --skyB:#EAF6FD;
+    --radius:16px;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; color:var(--ink);
+    font-family:'Nunito',sans-serif;
+    -webkit-font-smoothing:antialiased;
+    padding-bottom:90px;
+    background:
+      radial-gradient(ellipse 120% 60% at 20% 0%, rgba(255,255,255,0.9), transparent 55%),
+      radial-gradient(ellipse 90% 50% at 85% 10%, rgba(255,255,255,0.7), transparent 50%),
+      linear-gradient(180deg, var(--skyA) 0%, var(--skyB) 38%, #F5FBFE 100%);
+    background-attachment:fixed;
+  }
+  ::selection{background:var(--gold);color:#fff;}
+
+  /* HEADER — watercolor sky with cloud texture */
+  header{
+    position:relative; overflow:hidden;
+    background:
+      radial-gradient(ellipse 70% 90% at 10% -10%, rgba(255,255,255,0.55), transparent 55%),
+      radial-gradient(ellipse 60% 70% at 95% 0%, rgba(255,255,255,0.4), transparent 50%),
+      linear-gradient(160deg,#2E9FE0 0%,#1E7FC2 55%,#175E92 100%);
+    color:#fff; padding:22px 18px 26px;
+    position:sticky; top:0; z-index:20;
+    box-shadow:0 6px 20px rgba(30,127,194,0.28);
+  }
+  header::after{
+    content:''; position:absolute; inset:0; pointer-events:none; opacity:.35;
+    background-image:
+      radial-gradient(circle at 15% 85%, rgba(255,255,255,0.5) 0%, transparent 6%),
+      radial-gradient(circle at 78% 70%, rgba(255,255,255,0.4) 0%, transparent 8%),
+      radial-gradient(circle at 40% 15%, rgba(255,255,255,0.35) 0%, transparent 10%);
+  }
+  .brand-row{display:flex;align-items:center;justify-content:space-between;gap:10px; position:relative; z-index:1;}
+  .brand{display:flex;align-items:center;gap:12px;}
+  .brand-logo{
+    height:38px; width:auto; flex-shrink:0;
+    filter:drop-shadow(0 2px 6px rgba(0,0,0,0.25));
+  }
+  .brand-text h1{
+    font-size:19px;margin:0;font-weight:700;letter-spacing:.2px;
+    font-family:'Baloo 2',sans-serif;
+    text-shadow:0 2px 6px rgba(10,50,80,0.35);
+  }
+  .brand-text p{margin:2px 0 0;font-size:12px;color:#DCF0FC;font-weight:600; font-family:'Caveat',cursive; font-size:16px;}
+  .add-btn{
+    background:linear-gradient(135deg,var(--gold),#729D2A); color:#fff; border:none;
+    padding:9px 15px; border-radius:12px; font-weight:700; font-size:13px;
+    display:flex; align-items:center; gap:6px; cursor:pointer;
+    box-shadow:0 3px 10px rgba(141,182,60,0.45);
+  }
+  .add-btn:active{transform:scale(0.96);}
+
+  .login-btn{
+    background:rgba(255,255,255,0.16); color:#fff; border:1px solid rgba(255,255,255,0.3);
+    padding:8px 13px; border-radius:12px; font-weight:700; font-size:12.5px;
+    display:flex; align-items:center; gap:6px; cursor:pointer;
+  }
+  .login-btn:active{transform:scale(0.96);}
+  .login-btn.is-admin{
+    background:rgba(255,255,255,0.95); color:var(--klinis); border-color:#fff;
+  }
+  .admin-banner{
+    margin-top:12px; position:relative; z-index:1;
+    background:rgba(255,255,255,0.15); border:1px solid rgba(255,255,255,0.25);
+    border-radius:12px; padding:8px 13px;
+    display:flex; align-items:center; justify-content:space-between;
+    font-size:12.5px; font-weight:700; color:#fff;
+  }
+  .admin-banner button{
+    background:rgba(255,255,255,0.9); color:var(--klinis); border:none;
+    padding:5px 12px; border-radius:8px; font-weight:700; font-size:11.5px; cursor:pointer;
+  }
+
+  .search-wrap{margin-top:16px; position:relative; z-index:1;}
+  .search-box{
+    background:rgba(255,255,255,0.18); border:1px solid rgba(255,255,255,0.3);
+    border-radius:14px; padding:10px 14px; display:flex; gap:8px; align-items:center;
+    backdrop-filter:blur(4px);
+  }
+  .search-box input{
+    background:transparent;border:none;outline:none;color:#fff;
+    font-family:'Nunito',sans-serif; font-size:14px; width:100%; font-weight:600;
+  }
+  .search-box input::placeholder{color:#DCF0FC;}
+  .search-box svg{flex-shrink:0;opacity:.9;}
+
+  .tabs{display:flex;gap:8px;margin-top:14px;overflow-x:auto;padding-bottom:2px; position:relative; z-index:1;}
+  .tabs::-webkit-scrollbar{display:none;}
+  .tab{
+    flex-shrink:0; padding:7px 15px; border-radius:20px; font-size:12.5px; font-weight:700;
+    background:rgba(255,255,255,0.15); color:#E4F4FC; border:1px solid rgba(255,255,255,0.25);
+    cursor:pointer; white-space:nowrap;
+  }
+  .tab.active{background:#fff;color:var(--klinis);border-color:#fff;}
+
+  /* STATS STRIP */
+  .stats{
+    display:grid; grid-template-columns:repeat(3,1fr); gap:10px;
+    padding:14px 18px 4px;
+  }
+  .stat{
+    background:var(--card); border:1px solid var(--line); border-radius:14px;
+    padding:11px 12px; box-shadow:0 2px 10px rgba(30,127,194,0.08);
+  }
+  .stat .n{font-size:20px;font-weight:800;color:var(--klinis);font-family:'Baloo 2',sans-serif;}
+  .stat .l{font-size:10.5px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-top:1px;}
+
+  /* CATEGORY FILTER CHIPS */
+  .cat-chips{display:flex;gap:8px;overflow-x:auto;padding:12px 18px 6px;}
+  .cat-chips::-webkit-scrollbar{display:none;}
+  .chip{
+    flex-shrink:0;padding:6px 14px;border-radius:18px;font-size:12px;font-weight:700;
+    background:var(--card);border:1.5px solid var(--line);color:var(--muted);cursor:pointer;
+  }
+  .chip.active{background:var(--ink);color:#fff;border-color:var(--ink);}
+
+  /* GRID */
+  .grid{
+    display:grid; grid-template-columns:1fr 1fr; gap:12px;
+    padding:10px 18px 20px;
+  }
+  @media(min-width:640px){ .grid{grid-template-columns:repeat(3,1fr);} }
+
+  .card{
+    background:var(--card); border:1px solid var(--line); border-radius:var(--radius);
+    overflow:hidden; cursor:pointer; position:relative;
+    transition:transform .15s ease, box-shadow .15s ease;
+    box-shadow:0 3px 12px rgba(30,127,194,0.10);
+  }
+  .card:active{transform:scale(0.97);}
+  .card-img{
+    width:100%; aspect-ratio:1/1; background:var(--bg);
+    display:flex;align-items:center;justify-content:center;
+    position:relative; overflow:hidden;
+  }
+  .card-img img{width:100%;height:100%;object-fit:cover;}
+  .card-img .ph{color:var(--line);}
+  .div-badge{
+    position:absolute; top:8px; left:8px;
+    font-size:9.5px; font-weight:800; padding:3px 9px; border-radius:20px;
+    color:#fff; letter-spacing:.3px;
+  }
+  .div-badge.klinis{background:var(--klinis);}
+  .div-badge.estetik{background:linear-gradient(120deg,var(--estetik),var(--estetik-2));}
+  .brosur-badge{
+    position:absolute; bottom:8px; right:8px;
+    background:rgba(18,59,99,0.85); color:#fff; font-size:9px; font-weight:700;
+    padding:3px 7px; border-radius:6px; display:flex; align-items:center; gap:3px;
+  }
+  .card-body{padding:10px 11px 12px;}
+  .card-body h3{
+    font-size:13px; font-weight:700; margin:0 0 3px; line-height:1.3;
+    display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+  }
+  .card-body .cat{font-size:10.5px;color:var(--muted);font-weight:600;margin-bottom:6px;}
+  .price-row{display:flex;justify-content:space-between;align-items:baseline;}
+  .price{font-size:13px;font-weight:800;color:var(--klinis);font-family:'Baloo 2',sans-serif;}
+  .stock{
+    font-size:10px; font-weight:700; padding:2px 7px; border-radius:6px;
+  }
+  .stock.ok{background:#E9F3DC;color:#5C8221;}
+  .stock.low{background:var(--estetik-light);color:var(--danger);}
+  .stock.out{background:#F1F1F1;color:#999;}
+
+  .empty{
+    grid-column:1/-1; text-align:center; padding:60px 20px; color:var(--muted);
+  }
+  .empty svg{margin-bottom:12px;opacity:.5;}
+  .empty h3{font-size:15px;margin:0 0 4px;color:var(--ink); font-family:'Baloo 2',sans-serif;}
+  .empty p{font-size:13px;margin:0;}
+
+  /* FAB */
+  .fab{
+    position:fixed; bottom:22px; right:18px; z-index:30;
+    width:56px;height:56px;border-radius:50%;
+    background:linear-gradient(135deg,var(--gold),#729D2A); border:none; color:#fff;
+    box-shadow:0 6px 20px rgba(141,182,60,0.5);
+    display:flex;align-items:center;justify-content:center; cursor:pointer;
+  }
+  .fab:active{transform:scale(0.92);}
+
+  /* MODAL / SHEET */
+  .overlay{
+    position:fixed; inset:0; background:rgba(18,59,99,0.5);
+    z-index:40; display:none; backdrop-filter:blur(2px);
+  }
+  .overlay.show{display:block;}
+  .sheet{
+    position:fixed; left:0; right:0; bottom:0; z-index:41;
+    background:var(--card); border-radius:22px 22px 0 0;
+    max-height:92vh; overflow-y:auto;
+    transform:translateY(100%); transition:transform .28s cubic-bezier(.2,.9,.3,1);
+    padding-bottom:24px;
+  }
+  .sheet.show{transform:translateY(0);}
+  .sheet-handle{width:38px;height:4px;background:var(--line);border-radius:3px;margin:10px auto 4px;}
+  .sheet-head{
+    padding:8px 18px 14px; display:flex; justify-content:space-between; align-items:center;
+    border-bottom:1px solid var(--line);
+  }
+  .sheet-head h2{font-size:17px;margin:0;font-weight:700; font-family:'Baloo 2',sans-serif; color:var(--ink);}
+  .close-btn{
+    width:30px;height:30px;border-radius:50%;background:var(--bg);border:none;
+    display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--muted);
+  }
+  .sheet-body{padding:16px 18px;}
+
+  .field{margin-bottom:15px;}
+  .field label{
+    display:block; font-size:12px; font-weight:700; color:var(--muted);
+    margin-bottom:6px; text-transform:uppercase; letter-spacing:.3px;
+  }
+  .field input[type=text], .field input[type=number], .field textarea, .field select{
+    width:100%; border:1.5px solid var(--line); border-radius:12px; padding:11px 12px;
+    font-family:'Nunito',sans-serif; font-size:14px; color:var(--ink); background:var(--bg);
+    outline:none;
+  }
+  .field input:focus, .field textarea:focus, .field select:focus{border-color:var(--klinis);}
+  .field textarea{resize:vertical; min-height:70px;}
+  .seg{display:flex; gap:8px;}
+  .seg-btn{
+    flex:1; padding:10px; border-radius:12px; border:1.5px solid var(--line);
+    background:var(--bg); text-align:center; font-size:13px; font-weight:700; color:var(--muted);
+    cursor:pointer;
+  }
+  .seg-btn.sel-klinis{border-color:var(--klinis); background:var(--klinis-light); color:var(--klinis);}
+  .seg-btn.sel-estetik{border-color:var(--estetik-2); background:var(--estetik-light); color:var(--estetik-2);}
+
+  .row2{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+
+  .upload-box{
+    border:2px dashed var(--line); border-radius:14px; padding:18px;
+    text-align:center; cursor:pointer; background:var(--bg);
+    position:relative; overflow:hidden;
+  }
+  .upload-box .up-icon{color:var(--muted); margin-bottom:6px;}
+  .upload-box .up-text{font-size:12.5px; color:var(--muted); font-weight:700;}
+  .upload-box input[type=file]{display:none;}
+
+  .img-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:10px;}
+  .img-grid:empty{margin-bottom:0;}
+  .img-thumb{
+    position:relative; aspect-ratio:1/1; border-radius:12px; overflow:hidden;
+    border:1.5px solid var(--line);
+  }
+  .img-thumb img{width:100%;height:100%;object-fit:cover; display:block;}
+  .img-thumb .remove-img{
+    position:absolute; top:4px; right:4px; background:rgba(0,0,0,0.6); color:#fff;
+    width:22px;height:22px;border-radius:50%;border:none; display:flex; align-items:center; justify-content:center;
+    cursor:pointer; z-index:2;
+  }
+  .img-thumb .cover-tag{
+    position:absolute; bottom:4px; left:4px; background:rgba(18,59,99,0.85); color:#fff;
+    font-size:8.5px; font-weight:700; padding:2px 6px; border-radius:5px; letter-spacing:.2px;
+  }
+
+  .pdf-row{
+    display:flex; align-items:center; gap:10px; border:1.5px solid var(--line); border-radius:12px;
+    padding:11px 12px; background:var(--bg); cursor:pointer;
+  }
+  .pdf-row .pdf-ic{
+    width:34px;height:34px;border-radius:9px;background:var(--estetik-light);color:var(--danger);
+    display:flex;align-items:center;justify-content:center;flex-shrink:0;
+  }
+  .pdf-row .pdf-info{flex:1; min-width:0;}
+  .pdf-row .pdf-name{font-size:12.5px;font-weight:700;color:var(--ink); white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .pdf-row .pdf-sub{font-size:11px;color:var(--muted);}
+  .pdf-row .pdf-x{color:var(--muted);flex-shrink:0;}
+
+  .save-btn{
+    width:100%; background:linear-gradient(135deg,var(--klinis),#175E92); color:#fff; border:none; padding:14px;
+    border-radius:14px; font-size:15px; font-weight:700; cursor:pointer; margin-top:6px;
+    font-family:'Baloo 2',sans-serif; box-shadow:0 4px 14px rgba(30,127,194,0.35);
+  }
+  .save-btn:active{transform:scale(0.98);}
+  .del-btn{
+    width:100%; background:#fff; color:var(--danger); border:1.5px solid var(--danger);
+    padding:12px; border-radius:14px; font-size:13.5px; font-weight:700; cursor:pointer; margin-top:10px;
+  }
+
+  /* DETAIL VIEW */
+  .detail-hero{width:100%; background:var(--bg); position:relative;}
+  .hero-scroll{display:flex; overflow-x:auto; scroll-snap-type:x mandatory; -webkit-overflow-scrolling:touch;}
+  .hero-scroll::-webkit-scrollbar{display:none;}
+  .hero-slide{flex:0 0 100%; scroll-snap-align:center; display:flex; align-items:center; justify-content:center; background:var(--bg); max-height:60vh; overflow:hidden;}
+  .hero-slide img{width:100%; height:auto; max-height:60vh; object-fit:contain; display:block;}
+  .hero-dots{display:flex; justify-content:center; gap:6px; padding:10px 0 2px;}
+  .hero-dot{width:6px;height:6px;border-radius:50%;background:var(--line);}
+  .hero-dot.active{background:var(--klinis); width:16px; border-radius:4px; transition:all .2s;}
+  .hero-empty{width:100%; aspect-ratio:4/3; display:flex;align-items:center;justify-content:center;color:var(--line);}
+  .detail-body{padding:16px 18px;}
+  .detail-badge{display:inline-block; font-size:11px; font-weight:800; padding:4px 11px; border-radius:20px; color:#fff; margin-bottom:8px;}
+  .detail-title{font-size:20px; font-weight:700; margin:0 0 4px; font-family:'Baloo 2',sans-serif; color:var(--ink);}
+  .detail-cat{font-size:13px; color:var(--muted); margin-bottom:14px; font-weight:600;}
+  .detail-price-box{
+    background:var(--klinis-light); border-radius:14px; padding:14px 16px;
+    display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;
+  }
+  .detail-price-box .dp{font-size:21px; font-weight:800; color:var(--klinis); font-family:'Baloo 2',sans-serif;}
+  .detail-price-box .ds{text-align:right;}
+  .detail-desc{font-size:13.5px; line-height:1.6; color:#3A5670; margin-bottom:16px; white-space:pre-wrap;}
+  .brosur-link{
+    display:flex; align-items:center; gap:12px; background:var(--bg); border:1.5px solid var(--line);
+    border-radius:14px; padding:13px 14px; text-decoration:none; margin-bottom:16px;
+  }
+  .brosur-link .pdf-ic{width:38px;height:38px;border-radius:10px;background:var(--estetik-light);color:var(--danger);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .brosur-link .bl-text b{display:block;font-size:13px;color:var(--ink);}
+  .brosur-link .bl-text span{font-size:11.5px;color:var(--muted);}
+  .detail-actions{display:flex;gap:10px;}
+  .edit-btn{flex:1; background:linear-gradient(135deg,var(--klinis),#175E92); color:#fff; border:none; padding:13px; border-radius:14px; font-weight:700; font-size:13.5px; cursor:pointer; font-family:'Baloo 2',sans-serif;}
+  .del-btn-sm{flex:0 0 50px; background:#fff; border:1.5px solid var(--danger); color:var(--danger); border-radius:14px; display:flex;align-items:center;justify-content:center; cursor:pointer;}
+
+  .toast{
+    position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(20px);
+    background:var(--ink); color:#fff; padding:11px 20px; border-radius:30px; font-size:13px; font-weight:700;
+    opacity:0; pointer-events:none; transition:all .25s ease; z-index:60; white-space:nowrap;
+  }
+  .toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+
+  .loading-spin{
+    width:16px;height:16px;border:2px solid rgba(255,255,255,0.3); border-top-color:#fff;
+    border-radius:50%; animation:spin 0.7s linear infinite; display:inline-block;
+  }
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  .upload-progress{
+    margin-top:10px; background:var(--bg); border-radius:10px; padding:9px 11px;
+    display:none; align-items:center; gap:9px; border:1px solid var(--line);
+  }
+  .upload-progress.show{display:flex;}
+  .upload-progress .up-bar-track{flex:1; height:5px; background:var(--line); border-radius:4px; overflow:hidden;}
+  .upload-progress .up-bar-fill{height:100%; background:var(--klinis); width:0%; transition:width .2s;}
+  .upload-progress .up-pct{font-size:11px; font-weight:700; color:var(--muted); font-family:'JetBrains Mono',monospace; flex-shrink:0;}
+
+  .conn-banner{
+    display:none; align-items:center; gap:8px; background:var(--estetik-light); color:var(--danger);
+    font-size:12px; font-weight:700; padding:9px 18px; text-align:center; justify-content:center;
+  }
+  .conn-banner.show{display:flex;}
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+</head>
+<body>
+
+<div class="conn-banner" id="connBanner">⚠ Gagal terhubung ke server. Perubahan tidak akan tersimpan.</div>
+
+<header>
+  <div class="brand-row">
+    <div class="brand">
+      <img class="brand-logo" src="data:image/png;base64,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" alt="SDM">
+      <div class="brand-text">
+        <h1>Katalog Produk</h1>
+        <p>Iswandi &middot; MKS 4</p>
+      </div>
+    </div>
+    <button class="add-btn" id="addBtnHeader" onclick="openForm()" style="display:none;">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M12 5v14M5 12h14"/></svg>
+      Tambah
+    </button>
+    <button class="login-btn" id="loginBtn" onclick="doLogin()">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M22 12.2c0-.7-.06-1.4-.18-2H12v3.8h5.6a4.8 4.8 0 0 1-2.08 3.15v2.6h3.36C20.9 18 22 15.36 22 12.2Z" fill="#fff"/><path d="M12 22c2.7 0 4.97-.9 6.62-2.4l-3.36-2.6c-.93.63-2.13 1-3.26 1-2.5 0-4.62-1.68-5.38-3.95H3.16v2.66A10 10 0 0 0 12 22Z" fill="#fff" opacity=".85"/><path d="M6.62 14.05a5.98 5.98 0 0 1 0-3.8V7.6H3.16a10 10 0 0 0 0 8.8l3.46-2.35Z" fill="#fff" opacity=".7"/><path d="M12 6.2c1.47 0 2.79.5 3.83 1.5l2.87-2.87A9.98 9.98 0 0 0 12 2a10 10 0 0 0-8.84 5.6l3.46 2.65C7.38 7.9 9.5 6.2 12 6.2Z" fill="#fff" opacity=".55"/></svg>
+      <span id="loginBtnText">Login</span>
+    </button>
+  </div>
+  <div class="admin-banner" id="adminBanner" style="display:none;">
+    <span>👤 Masuk sebagai Admin</span>
+    <button onclick="doLogout()">Keluar</button>
+  </div>
+  <div class="search-wrap">
+    <div class="search-box">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+      <input id="searchInput" type="text" placeholder="Cari nama produk..." oninput="render()">
+    </div>
+  </div>
+  <div class="tabs">
+    <div class="tab active" data-div="all" onclick="setDiv('all')">Semua</div>
+    <div class="tab" data-div="Klinis" onclick="setDiv('Klinis')">Derma Klinis</div>
+    <div class="tab" data-div="Estetik" onclick="setDiv('Estetik')">Derma Estetik</div>
+  </div>
+</header>
+
+<div class="stats">
+  <div class="stat"><div class="n" id="statTotal">0</div><div class="l">Produk</div></div>
+  <div class="stat"><div class="n" id="statBrosur">0</div><div class="l">Ada Brosur</div></div>
+  <div class="stat"><div class="n" id="statLow">0</div><div class="l">Stok Menipis</div></div>
+</div>
+
+<div class="cat-chips" id="catChips"></div>
+
+<div class="grid" id="grid"></div>
+
+<button class="fab" id="fabAdd" onclick="openForm()" style="display:none;">
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+</button>
+
+<!-- FORM SHEET -->
+<div class="overlay" id="overlayForm" onclick="closeForm()"></div>
+<div class="sheet" id="formSheet">
+  <div class="sheet-handle"></div>
+  <div class="sheet-head">
+    <h2 id="formTitle">Tambah Produk</h2>
+    <button class="close-btn" onclick="closeForm()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"><path d="M18 6 6 18M6 6l12 12"/></svg>
+    </button>
+  </div>
+  <div class="sheet-body">
+    <div class="field">
+      <label>Divisi</label>
+      <div class="seg">
+        <div class="seg-btn" id="segKlinis" onclick="pickDiv('Klinis')">Derma Klinis</div>
+        <div class="seg-btn" id="segEstetik" onclick="pickDiv('Estetik')">Derma Estetik</div>
+      </div>
+    </div>
+    <div class="field">
+      <label>Nama Produk</label>
+      <input type="text" id="fName" placeholder="mis. Dermatix Ultra Gel 15g">
+    </div>
+    <div class="field">
+      <label>Kategori</label>
+      <input type="text" id="fCat" placeholder="mis. Scar Treatment, Filler, Skincare">
+    </div>
+    <div class="row2">
+      <div class="field">
+        <label>Harga (Rp)</label>
+        <input type="number" id="fPrice" placeholder="0">
+      </div>
+      <div class="field">
+        <label>Stok</label>
+        <input type="number" id="fStock" placeholder="0">
+      </div>
+    </div>
+    <div class="field">
+      <label>Deskripsi</label>
+      <textarea id="fDesc" placeholder="Indikasi, kemasan, catatan penting..."></textarea>
+    </div>
+    <div class="field">
+      <label>Gambar Produk (bisa lebih dari satu)</label>
+      <div class="img-grid" id="imgGrid"></div>
+      <div class="upload-box" id="imgBox" onclick="document.getElementById('imgInput').click()">
+        <svg class="up-icon" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/></svg>
+        <div class="up-text">Ketuk untuk tambah gambar</div>
+        <input type="file" id="imgInput" accept="image/*" multiple onchange="handleImg(event)">
+      </div>
+      <div class="upload-progress" id="imgProgress">
+        <span class="loading-spin" style="border-color:rgba(27,75,90,0.25); border-top-color:var(--klinis);"></span>
+        <div class="up-bar-track"><div class="up-bar-fill" id="imgProgressBar"></div></div>
+        <div class="up-pct" id="imgProgressPct">Mengompres...</div>
+      </div>
+    </div>
+    <div class="field">
+      <label>Brosur (PDF)</label>
+      <div class="pdf-row" id="pdfRow" onclick="document.getElementById('pdfInput').click()">
+        <div class="pdf-ic">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+        </div>
+        <div class="pdf-info">
+          <div class="pdf-name" id="pdfName">Belum ada brosur</div>
+          <div class="pdf-sub" id="pdfSub">Ketuk untuk upload PDF</div>
+        </div>
+        <svg class="pdf-x" id="pdfXIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+      </div>
+      <input type="file" id="pdfInput" accept="application/pdf" style="display:none" onchange="handlePdf(event)">
+      <div class="upload-progress" id="pdfProgress">
+        <span class="loading-spin" style="border-color:rgba(27,75,90,0.25); border-top-color:var(--klinis);"></span>
+        <div class="up-bar-track"><div class="up-bar-fill" id="pdfProgressBar"></div></div>
+        <div class="up-pct" id="pdfProgressPct">Mengunggah...</div>
+      </div>
+    </div>
+
+    <button class="save-btn" id="saveBtn" onclick="saveProduct()">Simpan Produk</button>
+    <button class="del-btn" id="deleteBtn" style="display:none" onclick="deleteProduct()">Hapus Produk</button>
+  </div>
+</div>
+
+<!-- DETAIL SHEET -->
+<div class="overlay" id="overlayDetail" onclick="closeDetail()"></div>
+<div class="sheet" id="detailSheet">
+  <div class="sheet-handle"></div>
+  <div class="sheet-head" style="border-bottom:none;">
+    <div></div>
+    <button class="close-btn" onclick="closeDetail()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"><path d="M18 6 6 18M6 6l12 12"/></svg>
+    </button>
+  </div>
+  <div id="detailContent"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+let products = [];
+let currentDiv = 'all';
+let currentCat = 'all';
+let editingId = null;
+let pickedDiv = 'Klinis';
+let tempImgs = [];      // array of {url, path}  -- url utk tampil, path utk hapus dari Storage
+let pendingImgFiles = []; // File objects yang belum diupload (baru dipilih)
+let tempPdf = null;     // {url, path, name, size} atau null
+let pendingPdfFile = null;
+let heroIndex = 0;
+let isAdmin = false;
+let currentUser = null;
+
+const COL_NAME = 'products';
+
+function fmtRupiah(n){
+  if(n===undefined || n===null || n==='') return 'Rp 0';
+  return 'Rp ' + Number(n).toLocaleString('id-ID');
+}
+function fmtSize(bytes){
+  if(!bytes) return '';
+  if(bytes < 1024*1024) return Math.round(bytes/1024)+' KB';
+  return (bytes/(1024*1024)).toFixed(1)+' MB';
+}
+function uid(){ return 'p_' + Date.now() + '_' + Math.random().toString(36).slice(2,8); }
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 2200);
+}
+
+/* ---- KOMPRESI GAMBAR ----
+   Resize agar sisi terpanjang maks 1600px, convert ke JPEG kualitas 0.85.
+   Foto profesional/brosur tetap tajam, tapi ukuran file turun drastis. */
+function compressImage(file, maxDim=1600, quality=0.85){
+  return new Promise((resolve, reject)=>{
+    const img = new Image();
+    const reader = new FileReader();
+    reader.onload = (e)=>{ img.src = e.target.result; };
+    reader.onerror = reject;
+    img.onload = ()=>{
+      let { width, height } = img;
+      if(width > maxDim || height > maxDim){
+        if(width > height){ height = Math.round(height * maxDim / width); width = maxDim; }
+        else { width = Math.round(width * maxDim / height); height = maxDim; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width; canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0,0,width,height);
+      ctx.drawImage(img, 0, 0, width, height);
+      canvas.toBlob((blob)=>{
+        if(!blob){ reject(new Error('Kompresi gagal')); return; }
+        resolve(blob);
+      }, 'image/jpeg', quality);
+    };
+    img.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function setConnError(show){
+  document.getElementById('connBanner').classList.toggle('show', show);
+}
+
+/* ---- KOMPRESI PDF ----
+   Merender tiap halaman PDF jadi gambar (rasterisasi), mengompresnya seperti
+   foto, lalu menyusunnya kembali jadi PDF baru pakai jsPDF. Cocok untuk
+   brosur bergambar/visual; teks di dalamnya tidak lagi bisa di-select
+   setelah dikompres (karena sudah jadi gambar).
+   scale menentukan resolusi render: 1.5 cukup tajam untuk brosur di layar HP. */
+async function compressPdf(file, scale=1.5, quality=0.72, onProgress){
+  if(window['pdfjsLib']){
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  } else {
+    throw new Error('Modul kompresi PDF belum siap, coba lagi sebentar');
+  }
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const { jsPDF } = window.jspdf;
+  let doc = null;
+
+  for(let i = 1; i <= pdf.numPages; i++){
+    const page = await pdf.getPage(i);
+    const viewport = page.getViewport({ scale });
+    const canvas = document.createElement('canvas');
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    const ctx = canvas.getContext('2d');
+    await page.render({ canvasContext: ctx, viewport }).promise;
+    const imgData = canvas.toDataURL('image/jpeg', quality);
+
+    const orientation = viewport.width > viewport.height ? 'l' : 'p';
+    if(!doc){
+      doc = new jsPDF({ orientation, unit: 'px', format: [viewport.width, viewport.height] });
+    } else {
+      doc.addPage([viewport.width, viewport.height], orientation);
+    }
+    doc.addImage(imgData, 'JPEG', 0, 0, viewport.width, viewport.height);
+
+    if(onProgress) onProgress(Math.round(i / pdf.numPages * 100));
+  }
+
+  return doc.output('blob');
+}
+
+/* ---- UPLOAD KE CLOUDINARY ----
+   Unsigned upload langsung dari browser, tanpa api_secret.
+   resourceType: 'image' untuk foto, 'raw' untuk PDF/file non-gambar. */
+function uploadToCloudinary(blobOrFile, resourceType, onProgress){
+  return new Promise((resolve, reject)=>{
+    const { cloudName, uploadPreset } = window.CLOUDINARY;
+    const url = `https://api.cloudinary.com/v1_1/${cloudName}/${resourceType}/upload`;
+    const form = new FormData();
+    form.append('file', blobOrFile);
+    form.append('upload_preset', uploadPreset);
+
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', url);
+    xhr.upload.onprogress = (e)=>{
+      if(e.lengthComputable && onProgress) onProgress(Math.round(e.loaded/e.total*100));
+    };
+    xhr.onload = ()=>{
+      if(xhr.status >= 200 && xhr.status < 300){
+        try{ resolve(JSON.parse(xhr.responseText)); }
+        catch(e){ reject(new Error('Respons Cloudinary tidak valid')); }
+      } else {
+        let msg = 'Upload gagal (' + xhr.status + ')';
+        try{ msg = JSON.parse(xhr.responseText).error.message; }catch(e){}
+        reject(new Error(msg));
+      }
+    };
+    xhr.onerror = ()=> reject(new Error('Koneksi ke Cloudinary gagal'));
+    xhr.send(form);
+  });
+}
+
+let unsubscribe = null;
+function loadProducts(){
+  const { db, collection, onSnapshot } = window.fb;
+  unsubscribe = onSnapshot(collection(db, COL_NAME), (snap)=>{
+    setConnError(false);
+    products = [];
+    snap.forEach(d=> products.push({ id:d.id, ...d.data() }));
+    products.sort((a,b)=> (b.updatedAt||0) - (a.updatedAt||0));
+    renderCatChips();
+    render();
+  }, (err)=>{
+    console.error(err);
+    setConnError(true);
+    showToast('Gagal terhubung ke Firebase');
+  });
+}
+
+/* ---- AUTENTIKASI ----
+   Login pakai akun Google. Hanya email yang cocok dengan window.ADMIN_EMAIL
+   yang dianggap admin di sisi tampilan. Perlindungan yang sesungguhnya ada
+   di Firestore Rules (lihat firebase-rules.txt) — ini hanya mengatur UI. */
+function updateAuthUI(){
+  const loginBtn = document.getElementById('loginBtn');
+  const loginBtnText = document.getElementById('loginBtnText');
+  const adminBanner = document.getElementById('adminBanner');
+  const addBtnHeader = document.getElementById('addBtnHeader');
+  const fabAdd = document.getElementById('fabAdd');
+
+  if(isAdmin){
+    loginBtn.style.display = 'none';
+    adminBanner.style.display = 'flex';
+    addBtnHeader.style.display = 'flex';
+    fabAdd.style.display = 'flex';
+  } else {
+    loginBtn.style.display = 'flex';
+    loginBtn.classList.remove('is-admin');
+    loginBtnText.textContent = currentUser ? 'Bukan Admin' : 'Login';
+    adminBanner.style.display = 'none';
+    addBtnHeader.style.display = 'none';
+    fabAdd.style.display = 'none';
+  }
+  // detail view yang sedang terbuka perlu dirender ulang supaya tombol edit/hapus ikut update
+  if(document.getElementById('detailSheet').classList.contains('show')){
+    const openId = document.getElementById('detailSheet').dataset.openId;
+    if(openId) openDetail(openId);
+  }
+}
+
+async function doLogin(){
+  const { auth, googleProvider, signInWithPopup } = window.fb;
+  try{
+    await signInWithPopup(auth, googleProvider);
+  }catch(err){
+    console.error(err);
+    if(err.code !== 'auth/popup-closed-by-user'){
+      showToast('Gagal login: ' + (err.message || 'coba lagi'));
+    }
+  }
+}
+async function doLogout(){
+  const { auth, signOut } = window.fb;
+  try{
+    await signOut(auth);
+    showToast('Berhasil keluar');
+  }catch(err){
+    console.error(err);
+    showToast('Gagal keluar');
+  }
+}
+function initAuth(){
+  const { auth, onAuthStateChanged } = window.fb;
+  onAuthStateChanged(auth, (user)=>{
+    currentUser = user;
+    isAdmin = !!(user && user.email && user.email.toLowerCase() === window.ADMIN_EMAIL.toLowerCase());
+    updateAuthUI();
+  });
+}
+
+function setDiv(d){
+  currentDiv = d;
+  currentCat = 'all';
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active', t.dataset.div===d));
+  renderCatChips();
+  render();
+}
+
+function renderCatChips(){
+  const wrap = document.getElementById('catChips');
+  let pool = products;
+  if(currentDiv !== 'all') pool = pool.filter(p=>p.division===currentDiv);
+  const cats = [...new Set(pool.map(p=>p.category).filter(Boolean))].sort();
+  wrap.innerHTML = '';
+  const allChip = document.createElement('div');
+  allChip.className = 'chip' + (currentCat==='all' ? ' active' : '');
+  allChip.textContent = 'Semua Kategori';
+  allChip.onclick = ()=>{ currentCat='all'; renderCatChips(); render(); };
+  wrap.appendChild(allChip);
+  cats.forEach(c=>{
+    const el = document.createElement('div');
+    el.className = 'chip' + (currentCat===c ? ' active' : '');
+    el.textContent = c;
+    el.onclick = ()=>{ currentCat=c; renderCatChips(); render(); };
+    wrap.appendChild(el);
+  });
+}
+
+function render(){
+  const q = document.getElementById('searchInput').value.trim().toLowerCase();
+  let list = products;
+  if(currentDiv !== 'all') list = list.filter(p=>p.division===currentDiv);
+  if(currentCat !== 'all') list = list.filter(p=>p.category===currentCat);
+  if(q) list = list.filter(p=>p.name.toLowerCase().includes(q));
+
+  document.getElementById('statTotal').textContent = products.length;
+  document.getElementById('statBrosur').textContent = products.filter(p=>p.pdfUrl).length;
+  document.getElementById('statLow').textContent = products.filter(p=>p.stock!==undefined && p.stock>0 && p.stock<=10).length;
+
+  const grid = document.getElementById('grid');
+  if(list.length===0){
+    grid.innerHTML = `<div class="empty">
+      <svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="7" width="18" height="14" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+      <h3>Belum ada produk</h3>
+      <p>Ketuk tombol Tambah untuk mulai mengisi katalog.</p>
+    </div>`;
+    return;
+  }
+  grid.innerHTML = list.map(p=>{
+    const stockClass = !p.stock || p.stock<=0 ? 'out' : (p.stock<=10 ? 'low' : 'ok');
+    const stockText = !p.stock || p.stock<=0 ? 'Habis' : (p.stock<=10 ? 'Stok '+p.stock : 'Stok '+p.stock);
+    return `
+    <div class="card" onclick="openDetail('${p.id}')">
+      <div class="card-img">
+        ${(p.images&&p.images[0]) ? `<img src="${p.images[0].url}">` : `<svg class="ph" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/></svg>`}
+        <div class="div-badge ${p.division==='Klinis'?'klinis':'estetik'}">${p.division==='Klinis'?'Klinis':'Estetik'}</div>
+        ${p.pdfUrl ? `<div class="brosur-badge"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/></svg> PDF</div>` : ''}
+      </div>
+      <div class="card-body">
+        <h3>${escapeHtml(p.name)}</h3>
+        <div class="cat">${escapeHtml(p.category||'—')}</div>
+        <div class="price-row">
+          <div class="price">${fmtRupiah(p.price)}</div>
+          <div class="stock ${stockClass}">${stockText}</div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function escapeHtml(s){
+  const d = document.createElement('div');
+  d.textContent = s || '';
+  return d.innerHTML;
+}
+
+/* ---- FORM ---- */
+function pickDiv(d){
+  pickedDiv = d;
+  document.getElementById('segKlinis').className = 'seg-btn' + (d==='Klinis' ? ' sel-klinis' : '');
+  document.getElementById('segEstetik').className = 'seg-btn' + (d==='Estetik' ? ' sel-estetik' : '');
+}
+
+function openForm(product){
+  if(!isAdmin){ showToast('Hanya admin yang bisa menambah/mengedit produk'); return; }
+  editingId = product ? product.id : null;
+  document.getElementById('formTitle').textContent = product ? 'Edit Produk' : 'Tambah Produk';
+  document.getElementById('deleteBtn').style.display = product ? 'block' : 'none';
+  document.getElementById('saveBtn').textContent = product ? 'Simpan Perubahan' : 'Simpan Produk';
+
+  pickDiv(product ? product.division : 'Klinis');
+  document.getElementById('fName').value = product ? product.name : '';
+  document.getElementById('fCat').value = product ? product.category : '';
+  document.getElementById('fPrice').value = product ? product.price : '';
+  document.getElementById('fStock').value = product ? product.stock : '';
+  document.getElementById('fDesc').value = product ? product.description : '';
+
+  tempImgs = product && product.images ? [...product.images] : []; // {url, path}
+  pendingImgFiles = [];
+  tempPdf = product && product.pdfUrl ? { url: product.pdfUrl, path: product.pdfPath, name: product.pdfName, size: product.pdfSize } : null;
+  pendingPdfFile = null;
+  refreshImgGrid();
+  refreshPdfRow();
+  document.getElementById('imgProgress').classList.remove('show');
+  document.getElementById('pdfProgress').classList.remove('show');
+
+  closeDetail(true);
+  document.getElementById('overlayForm').classList.add('show');
+  document.getElementById('formSheet').classList.add('show');
+}
+function closeForm(){
+  document.getElementById('overlayForm').classList.remove('show');
+  document.getElementById('formSheet').classList.remove('show');
+}
+
+function refreshImgGrid(){
+  const grid = document.getElementById('imgGrid');
+  const existing = tempImgs.map((im,i)=>({ src: im.url, kind:'existing', idx:i }));
+  const pending = pendingImgFiles.map((pf,i)=>({ src: pf.previewUrl, kind:'pending', idx:i }));
+  const all = [...existing, ...pending];
+  grid.innerHTML = all.map((item,pos)=>`
+    <div class="img-thumb">
+      <img src="${item.src}">
+      ${pos===0 ? '<div class="cover-tag">SAMPUL</div>' : ''}
+      ${item.kind==='pending' ? '<div class="cover-tag" style="left:auto;right:4px;bottom:auto;top:4px;background:var(--gold);color:#2A1D06;">BARU</div>' : ''}
+      <button class="remove-img" onclick="event.stopPropagation(); removeImg('${item.kind}', ${item.idx})">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+  `).join('');
+}
+function removeImg(kind, idx){
+  if(kind==='existing') tempImgs.splice(idx,1);
+  else pendingImgFiles.splice(idx,1);
+  refreshImgGrid();
+}
+function handleImg(e){
+  const files = Array.from(e.target.files || []);
+  if(!files.length) return;
+  files.forEach(file=>{
+    if(!file.type.startsWith('image/')){ showToast(file.name + ' bukan gambar'); return; }
+    if(file.size > 20*1024*1024){ showToast(file.name + ' terlalu besar (maks 20MB sebelum kompresi)'); return; }
+    pendingImgFiles.push({ file, previewUrl: URL.createObjectURL(file) });
+  });
+  refreshImgGrid();
+  e.target.value = '';
+}
+
+function refreshPdfRow(){
+  const name = document.getElementById('pdfName');
+  const sub = document.getElementById('pdfSub');
+  const xicon = document.getElementById('pdfXIcon');
+  const active = pendingPdfFile || tempPdf;
+  if(active){
+    name.textContent = (pendingPdfFile ? pendingPdfFile.file.name : tempPdf.name) || 'brosur.pdf';
+    const size = pendingPdfFile ? pendingPdfFile.file.size : tempPdf.size;
+    let subText = fmtSize(size) + (pendingPdfFile ? ' · Baru dipilih' : ' · Ketuk untuk ganti');
+    if(pendingPdfFile && size > 10*1024*1024) subText += ' · akan dikompres otomatis';
+    sub.textContent = subText;
+    xicon.outerHTML = `<svg class="pdf-x" id="pdfXIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" onclick="event.stopPropagation(); removePdf()"><path d="M18 6 6 18M6 6l12 12"/></svg>`;
+  } else {
+    name.textContent = 'Belum ada brosur';
+    sub.textContent = 'Ketuk untuk upload PDF';
+    const el = document.getElementById('pdfXIcon');
+    el.outerHTML = `<svg class="pdf-x" id="pdfXIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>`;
+  }
+}
+function removePdf(){ tempPdf = null; pendingPdfFile = null; document.getElementById('pdfInput').value=''; refreshPdfRow(); }
+
+function handlePdf(e){
+  const file = e.target.files[0];
+  if(!file) return;
+  if(file.type !== 'application/pdf'){ showToast('File harus berupa PDF'); return; }
+  if(file.size > 40*1024*1024){ showToast('PDF maksimal 40MB (akan dikompres otomatis jika di atas 10MB)'); return; }
+  pendingPdfFile = { file };
+  refreshPdfRow();
+  e.target.value = '';
+}
+
+function setProgress(kind, pct, label){
+  const box = document.getElementById(kind+'Progress');
+  const bar = document.getElementById(kind+'ProgressBar');
+  const pctEl = document.getElementById(kind+'ProgressPct');
+  box.classList.toggle('show', pct !== null);
+  if(pct !== null){ bar.style.width = pct + '%'; pctEl.textContent = label || (pct + '%'); }
+}
+
+async function saveProduct(){
+  if(!isAdmin){ showToast('Hanya admin yang bisa menyimpan produk'); return; }
+  const name = document.getElementById('fName').value.trim();
+  if(!name){ showToast('Nama produk wajib diisi'); return; }
+
+  const { db, doc, setDoc } = window.fb;
+  const id = editingId || uid();
+  const btn = document.getElementById('saveBtn');
+  const orig = btn.textContent;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="loading-spin"></span>';
+
+  try{
+    // 1) Kompres & upload gambar baru ke Cloudinary
+    const uploadedNew = [];
+    if(pendingImgFiles.length){
+      let done = 0;
+      setProgress('img', 0, `0/${pendingImgFiles.length}`);
+      for(const pf of pendingImgFiles){
+        const compressed = await compressImage(pf.file);
+        const result = await uploadToCloudinary(compressed, 'image', (pct)=>{
+          const overall = Math.round((done + pct/100) / pendingImgFiles.length * 100);
+          setProgress('img', overall, `${done}/${pendingImgFiles.length}`);
+        });
+        uploadedNew.push({ url: result.secure_url, publicId: result.public_id });
+        done++;
+        setProgress('img', Math.round(done/pendingImgFiles.length*100), `${done}/${pendingImgFiles.length}`);
+      }
+      setProgress('img', null);
+    }
+    const allImages = [...tempImgs, ...uploadedNew];
+
+    // 2) Upload PDF baru ke Cloudinary (resource_type: raw, untuk file non-gambar)
+    let pdfData = tempPdf ? { pdfUrl: tempPdf.url, pdfPublicId: tempPdf.publicId, pdfName: tempPdf.name, pdfSize: tempPdf.size } : { pdfUrl:null, pdfPublicId:null, pdfName:null, pdfSize:null };
+    if(pendingPdfFile){
+      let fileToUpload = pendingPdfFile.file;
+      const CLOUDINARY_LIMIT = 10 * 1024 * 1024; // batas akun Cloudinary gratis
+
+      if(fileToUpload.size > CLOUDINARY_LIMIT){
+        setProgress('pdf', 0, 'Mengompres PDF...');
+        try{
+          const compressedBlob = await compressPdf(fileToUpload, 1.5, 0.72, (pct)=>{
+            setProgress('pdf', pct, `Mengompres... ${pct}%`);
+          });
+          if(compressedBlob.size < fileToUpload.size){
+            fileToUpload = compressedBlob;
+          }
+          if(fileToUpload.size > CLOUDINARY_LIMIT){
+            throw new Error(`PDF masih ${fmtSize(fileToUpload.size)} setelah dikompres, masih di atas batas 10MB Cloudinary`);
+          }
+        }catch(compressErr){
+          console.error(compressErr);
+          setProgress('pdf', null);
+          throw new Error('Gagal mengompres PDF: ' + compressErr.message);
+        }
+      }
+
+      setProgress('pdf', 0, 'Mengunggah...');
+      const result = await uploadToCloudinary(fileToUpload, 'raw', (pct)=>{
+        setProgress('pdf', pct, 'Mengunggah...');
+      });
+      pdfData = { pdfUrl: result.secure_url, pdfPublicId: result.public_id, pdfName: pendingPdfFile.file.name, pdfSize: fileToUpload.size };
+      setProgress('pdf', null);
+    }
+
+    // 3) Simpan dokumen produk ke Firestore (hanya teks + URL, bukan file)
+    const data = {
+      division: pickedDiv,
+      name: name,
+      category: document.getElementById('fCat').value.trim(),
+      price: document.getElementById('fPrice').value ? Number(document.getElementById('fPrice').value) : 0,
+      stock: document.getElementById('fStock').value ? Number(document.getElementById('fStock').value) : 0,
+      description: document.getElementById('fDesc').value.trim(),
+      images: allImages,
+      ...pdfData,
+      updatedAt: Date.now()
+    };
+    await setDoc(doc(db, COL_NAME, id), data);
+
+    closeForm();
+    showToast(editingId ? 'Produk diperbarui' : 'Produk ditambahkan');
+  }catch(err){
+    console.error(err);
+    showToast('Gagal menyimpan: ' + (err.message || 'periksa koneksi'));
+  }finally{
+    btn.disabled = false;
+    btn.textContent = orig;
+    setProgress('img', null);
+    setProgress('pdf', null);
+  }
+}
+
+async function deleteProduct(){
+  if(!isAdmin){ showToast('Hanya admin yang bisa menghapus produk'); return; }
+  if(!editingId) return;
+  const { db, doc, deleteDoc } = window.fb;
+  try{
+    await deleteDoc(doc(db, COL_NAME, editingId));
+    // Catatan: file di Cloudinary tidak ikut terhapus (unsigned upload tidak
+    // bisa menghapus dari browser demi keamanan). Data produk sudah hilang
+    // dari katalog; file lama di Cloudinary bisa dibersihkan manual lewat
+    // Cloudinary Console kalau perlu.
+    closeForm();
+    closeDetail();
+    showToast('Produk dihapus');
+  }catch(err){
+    console.error(err);
+    showToast('Gagal menghapus produk');
+  }
+}
+
+/* ---- DETAIL ---- */
+function openDetail(id){
+  const p = products.find(x=>x.id===id);
+  if(!p) return;
+  document.getElementById('detailSheet').dataset.openId = id;
+  const stockClass = !p.stock || p.stock<=0 ? 'out' : (p.stock<=10 ? 'low' : 'ok');
+  const stockText = !p.stock || p.stock<=0 ? 'Stok habis' : (p.stock<=10 ? 'Stok menipis · ' + p.stock + ' unit' : p.stock + ' unit tersedia');
+
+  const imgs = p.images && p.images.length ? p.images : [];
+  heroIndex = 0;
+  document.getElementById('detailContent').innerHTML = `
+    <div class="detail-hero">
+      ${imgs.length ? `
+        <div class="hero-scroll" id="heroScroll" onscroll="onHeroScroll()">
+          ${imgs.map(im=>`<div class="hero-slide"><img src="${im.url}"></div>`).join('')}
+        </div>
+        ${imgs.length>1 ? `<div class="hero-dots" id="heroDots">${imgs.map((_,i)=>`<div class="hero-dot${i===0?' active':''}"></div>`).join('')}</div>` : ''}
+      ` : `<div class="hero-empty"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/></svg></div>`}
+    </div>
+    <div class="detail-body">
+      <span class="detail-badge" style="background:${p.division==='Klinis'?'var(--klinis)':'linear-gradient(120deg,var(--estetik),var(--estetik-2))'}">${p.division==='Klinis'?'Derma Klinis':'Derma Estetik'}</span>
+      <h2 class="detail-title">${escapeHtml(p.name)}</h2>
+      <div class="detail-cat">${escapeHtml(p.category||'Tanpa kategori')}</div>
+      <div class="detail-price-box">
+        <div class="dp">${fmtRupiah(p.price)}</div>
+        <div class="ds"><span class="stock ${stockClass}">${stockText}</span></div>
+      </div>
+      ${p.description ? `<div class="detail-desc">${escapeHtml(p.description)}</div>` : ''}
+      ${p.pdfUrl ? `<a class="brosur-link" href="${p.pdfUrl}" target="_blank" rel="noopener">
+        <div class="pdf-ic"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></div>
+        <div class="bl-text"><b>${escapeHtml(p.pdfName || 'brosur.pdf')}</b><span>${fmtSize(p.pdfSize)} · Ketuk untuk buka</span></div>
+      </a>` : ''}
+      ${isAdmin ? `
+      <div class="detail-actions">
+        <button class="edit-btn" onclick="openForm(products.find(x=>x.id==='${p.id}'))">Edit Produk</button>
+        <button class="del-btn-sm" onclick="editingId='${p.id}'; deleteProduct();">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6h16z"/></svg>
+        </button>
+      </div>` : ''}
+    </div>
+  `;
+  document.getElementById('overlayDetail').classList.add('show');
+  document.getElementById('detailSheet').classList.add('show');
+}
+function onHeroScroll(){
+  const scroller = document.getElementById('heroScroll');
+  const dotsWrap = document.getElementById('heroDots');
+  if(!scroller || !dotsWrap) return;
+  const idx = Math.round(scroller.scrollLeft / scroller.clientWidth);
+  if(idx === heroIndex) return;
+  heroIndex = idx;
+  [...dotsWrap.children].forEach((d,i)=>d.classList.toggle('active', i===idx));
+}
+function closeDetail(skip){
+  document.getElementById('overlayDetail').classList.remove('show');
+  document.getElementById('detailSheet').classList.remove('show');
+  delete document.getElementById('detailSheet').dataset.openId;
+}
+
+window.addEventListener('DOMContentLoaded', ()=>{
+  // window.fb disiapkan oleh <script type="module"> di head; modul dieksekusi
+  // sebelum DOMContentLoaded jadi window.fb sudah pasti tersedia di sini.
+  initAuth();
+  loadProducts();
+});
+</script>
+</body>
+</html>
